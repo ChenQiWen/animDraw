@@ -57,10 +57,10 @@ Whether you're a front-end developer, designer, or animation enthusiast, this to
 
 ```bash
 # Clone the project
-git clone https://github.com/yourname/css-curve-animator.git
+git clone https://github.com/yourname/animDraw.git
 
 # Enter the project directory
-cd css-curve-animator
+cd animDraw
 
 # Open the HTML file directly in your browser
 open index.html  # macOS

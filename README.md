@@ -57,10 +57,10 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/yourname/css-curve-animator.git
+git clone https://github.com/yourname/animDraw.git
 
 # 进入项目目录
-cd css-curve-animator
+cd animDraw
 
 # 直接在浏览器中打开HTML文件
 open index.html  # macOS
