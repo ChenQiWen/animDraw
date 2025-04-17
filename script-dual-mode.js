@@ -11,6 +11,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const modeDescription = document.getElementById('modeDescription');
     const pathIndicator = document.getElementById('pathIndicator');
     
+    // 调试模式 - 按Shift+D启用，显示路径可视化
+    window.debugMode = false;
+    document.addEventListener('keydown', (e) => {
+        // Shift+D 组合键切换调试模式
+        if (e.shiftKey && e.key === 'D') {
+            window.debugMode = !window.debugMode;
+            console.log('调试模式：', window.debugMode ? '已启用' : '已禁用');
+            
+            // 如果有正在显示的路径，更新其可见性
+            const testPath = document.getElementById('testPathVis');
+            if (testPath) {
+                testPath.style.display = window.debugMode ? 'block' : 'none';
+            }
+            
+            const generatedPath = document.getElementById('generatedPathVis');
+            if (generatedPath) {
+                generatedPath.style.display = window.debugMode ? 'block' : 'none';
+            }
+        }
+    });
+    
     // 设置画布尺寸
     function resizeCanvas() {
         canvas.width = window.innerWidth;
@@ -275,7 +296,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 过滤点，去除太近的点以减少抖动
     function filterPoints(inputPoints) {
-        const minDistance = 3; // 最小像素距离阈值
+        // 减小最小距离阈值，保留更多原始点
+        const minDistance = 2; // 从3减小到2，保留更多细节
         let result = [inputPoints[0]]; // 始终保留第一个点
         
         for (let i = 1; i < inputPoints.length; i++) {
@@ -579,6 +601,10 @@ document.addEventListener('DOMContentLoaded', () => {
   top: ${currentElementPosition.top};
   left: ${currentElementPosition.left};
   
+  /* 元素居中调整 */
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  
   /* 使用offset-path实现元素沿曲线移动 */
   offset-path: path('${pathData}');
   offset-rotate: 0deg; /* 保持元素方向不变 */
@@ -591,6 +617,8 @@ ${keyframesCSS}
 @supports not (offset-path: path('')) {
   .element-animation {
     animation: moveAlongPath ${duration}s linear forwards;
+    transform: translate(-50%, -50%);
+    transform-origin: center center;
   }
   
   ${fallbackKeyframesCSS}
@@ -607,6 +635,10 @@ ${keyframesCSS}
   position: fixed;
   top: ${currentElementPosition.top};
   left: ${currentElementPosition.left};
+  
+  /* 元素居中调整 */
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
   
   /* 使用offset-path实现元素沿曲线移动 */
   offset-path: path('${pathData}');
@@ -627,6 +659,8 @@ ${keyframesCSS}
 @supports not (offset-path: path('')) {
   .element-animation {
     animation: moveAlongPath ${duration}s ${bezierTiming} forwards;
+    transform: translate(-50%, -50%);
+    transform-origin: center center;
   }
   
   @keyframes moveAlongPath {
@@ -639,7 +673,8 @@ ${keyframesCSS}
       left: ${points[points.length - 1].x}px;
     }
   }
-}`;
+}
+`;
     }
     
     // 生成定位模式CSS代码
@@ -674,158 +709,250 @@ ${keyframesCSS}
             return;
         }
         
+        console.log('---- 开始播放动画 ----');
+        
         // 1. 准备动画参数
         const { x1, y1, x2, y2 } = bezierParams || { x1: 0.42, y1: 0, x2: 0.58, y2: 1 };
         const duration = (points[points.length - 1].time - points[0].time) / 1000;
         const roundedDuration = Math.max(0.5, Math.min(5, Math.round(duration * 10) / 10));
         
-        // 2. 隐藏可视化元素
-        const svgPath = document.getElementById('testPathVis');
-        if (svgPath) svgPath.style.display = 'none';
-        
-        // 3. 清除旧的动画样式
-        let styleElem = document.getElementById('motionPathStyle');
-        if (styleElem) styleElem.remove();
-        
-        // 4. 过滤并简化路径点
+        // 2. 获取路径数据和元素尺寸
         const filteredPoints = filterPoints(points);
         const pathStartX = filteredPoints[0].x;
         const pathStartY = filteredPoints[0].y;
         
-        // 5. 生成平滑路径
-        const pathData = generateSmoothPath(filteredPoints, pathStartX, pathStartY);
-        console.log('生成的平滑路径:', pathData);
+        // 更精确地获取元素尺寸 - 重要！
+        // 只计算一次，避免多次获取可能的微小差异
+        const elementRect = animatedElement.getBoundingClientRect();
+        const elementWidth = elementRect.width;
+        const elementHeight = elementRect.height;
         
-        // 6. 创建新的动画样式元素
-        styleElem = document.createElement('style');
-        styleElem.id = 'motionPathStyle';
+        // 3. 计算元素的精确左上角位置（重要：不使用transform）
+        const startX = pathStartX - elementWidth/2;
+        const startY = pathStartY - elementHeight/2;
+
+        // 4. 移除旧样式和动画
+        let styleElem = document.getElementById('motionPathStyle');
+        if (styleElem) styleElem.remove();
         
-        // 7. 设置元素的路径和初始位置
-        animatedElement.style.offsetPath = `path('${pathData}')`;
-        animatedElement.style.offsetRotate = '0deg';
-        animatedElement.style.offsetDistance = '0%';
-        animatedElement.style.transition = 'none';
-        animatedElement.style.left = `${pathStartX}px`;
-        animatedElement.style.top = `${pathStartY}px`;
+        // 移除动画
+        if (animatedElement.animation) {
+            animatedElement.animation.cancel();
+            animatedElement.animation = null;
+        }
         
-        // 8. 应用恰当的动画类型
+        // 5. 强制重置元素 - 徻底清除所有样式并立即应用
+        resetElementStyles();
+
+        console.log('使用Web Animations API方法');
+        console.log('元素尺寸:', elementWidth, elementHeight);
+        console.log('路径起点:', pathStartX, pathStartY);
+        console.log('调整后的左上角:', startX, startY);
+
+        // 6. 准备关键帧数据 - 为Web Animations API准备
+        const keyframes = [];
+        
+        // 预处理所有点，计算为元素左上角精确位置
+        const adjustedPoints = [];
+        for (let i = 0; i < filteredPoints.length; i++) {
+            adjustedPoints.push({
+                x: filteredPoints[i].x - elementWidth/2,
+                y: filteredPoints[i].y - elementHeight/2
+            });
+        }
+        
+        // 7. 精确设置初始位置并创建关键帧
+        // 直接使用绝对精确的像素值，避免任何浏览器计算差异
+        animatedElement.style.position = 'fixed';
+        animatedElement.style.left = `${startX}px`;
+        animatedElement.style.top = `${startY}px`;
+        
+        // 8. 创建动画关键帧
         if (window.motionKeyframes && window.motionKeyframes.length >= 3) {
-            // 使用关键帧动画
-            applyKeyframeAnimation(styleElem, roundedDuration);
+            // 使用处理过的关键帧
+            for (let i = 0; i < window.motionKeyframes.length; i++) {
+                const kf = window.motionKeyframes[i];
+                const adjustedX = kf.point.x - elementWidth/2;
+                const adjustedY = kf.point.y - elementHeight/2;
+                
+                keyframes.push({
+                    offset: kf.progress,
+                    left: `${adjustedX}px`,
+                    top: `${adjustedY}px`
+                });
+            }
         } else {
-            // 使用贝塞尔曲线动画
-            applyBezierAnimation(styleElem, roundedDuration, x1, y1, x2, y2);
+            // 使用所有过滤后的点
+            for (let i = 0; i < adjustedPoints.length; i++) {
+                keyframes.push({
+                    offset: i / (adjustedPoints.length - 1),
+                    left: `${adjustedPoints[i].x}px`,
+                    top: `${adjustedPoints[i].y}px`
+                });
+            }
         }
+        
+        // 9. 使用双重延迟策略确保位置稳定后再应用动画
+        // 第一个setTimeout等待浏览器完成元素位置的计算和应用
+        setTimeout(() => {
+            // 重新确认元素位置，确保没有发生任何变化
+            const currentLeft = parseFloat(window.getComputedStyle(animatedElement).left);
+            const currentTop = parseFloat(window.getComputedStyle(animatedElement).top);
+            
+            // 检查位置是否精确，如果不是则再次设置
+            if (Math.abs(currentLeft - startX) > 0.1 || Math.abs(currentTop - startY) > 0.1) {
+                console.warn('元素位置发生了变化，重新设置...');
+                console.log('应为:', startX, startY);
+                console.log('实际:', currentLeft, currentTop);
+                
+                animatedElement.style.left = `${startX}px`;
+                animatedElement.style.top = `${startY}px`;
+                
+                // 强制重绘
+                void animatedElement.offsetWidth;
+            }
+            
+            // 使用requestAnimationFrame确保在下一帧绘制前应用动画
+            requestAnimationFrame(() => {
+                // 10. 使用Web Animations API创建动画，完全避开CSS动画
+                const timing = {
+                    duration: roundedDuration * 1000, // 转换为毫秒
+                    easing: window.motionKeyframes && window.motionKeyframes.length >= 3 ?
+                        'linear' :
+                        `cubic-bezier(${x1}, ${y1}, ${x2}, ${y2})`,
+                    fill: 'forwards'
+                };
+                
+                // 应用动画并保存引用
+                animatedElement.animation = animatedElement.animate(keyframes, timing);
+                
+                // 动画开始和结束事件处理
+                animatedElement.animation.onfinish = () => {
+                    console.log('动画完成');
+                };
+                
+                // 添加调试标记
+                if (window.debugMode) {
+                    displayDebugMarkers(filteredPoints, adjustedPoints);
+                }
+            });
+        }, 150); // 增加等待时间，确保元素位置完全稳定
     }
     
-    // 生成平滑路径
-    function generateSmoothPath(points, originX, originY) {
-        if (points.length <= 3) {
-            // 点数少时使用线性路径
-            return generateLinearPath(points, originX, originY);
-        } else {
-            // 点数多时使用贝塞尔曲线
-            return generateCurvedPath(points, originX, originY);
+    // 重置元素所有样式到基本状态
+    function resetElementStyles() {
+        // 保存位置
+        const wasAnimating = !!animatedElement.animation;
+        
+        // 取消任何正在进行的动画
+        if (animatedElement.animation) {
+            animatedElement.animation.cancel();
+            animatedElement.animation = null;
         }
+        
+        // 完全清除所有样式
+        animatedElement.style.cssText = '';
+        
+        // 设置基本样式
+        animatedElement.style.position = 'fixed';
+        
+        // 确保没有偏移属性，全部设为初始值，不影响布局
+        animatedElement.style.transform = 'none';
+        animatedElement.style.animation = 'none';
+        animatedElement.style.transition = 'none';
+        animatedElement.style.offsetPath = 'none';
+        animatedElement.style.offsetDistance = '0';
+        
+        // 如果元素曾经有动画，额外重置相关属性
+        if (wasAnimating) {
+            animatedElement.style.offsetRotate = '0deg';
+            // 确保没有残留的动画属性
+            animatedElement.style.animationName = 'none';
+            animatedElement.style.animationDuration = '0s';
+        }
+        
+        // 强制多次重绘，确保所有变化生效
+        void animatedElement.offsetWidth;
+        requestAnimationFrame(() => {
+            void animatedElement.offsetWidth;
+        });
     }
     
-    // 生成线性路径
-    function generateLinearPath(points, originX, originY) {
-        let pathData = `M 0 0`;
+    // 显示调试标记
+    function displayDebugMarkers(points, adjustedPoints) {
+        // 显示路径
+        const svg = document.getElementById('debugPath');
+        const pathStartX = points[0].x;
+        const pathStartY = points[0].y;
+        
+        // 创建或更新起点标记
+        let startMarker = document.getElementById('pathStartMarker');
+        if (!startMarker) {
+            startMarker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            startMarker.id = 'pathStartMarker';
+            startMarker.setAttribute('r', '5');
+            startMarker.setAttribute('fill', 'red');
+            svg.appendChild(startMarker);
+        }
+        
+        startMarker.setAttribute('cx', pathStartX);
+        startMarker.setAttribute('cy', pathStartY);
+        startMarker.style.display = 'block';
+        
+        // 创建或更新左上角标记
+        let cornerMarker = document.getElementById('cornerMarker');
+        if (!cornerMarker) {
+            cornerMarker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            cornerMarker.id = 'cornerMarker';
+            cornerMarker.setAttribute('r', '3');
+            cornerMarker.setAttribute('fill', 'blue');
+            svg.appendChild(cornerMarker);
+        }
+        
+        // 设置左上角标记位置
+        if (adjustedPoints && adjustedPoints.length > 0) {
+            cornerMarker.setAttribute('cx', adjustedPoints[0].x);
+            cornerMarker.setAttribute('cy', adjustedPoints[0].y);
+            cornerMarker.style.display = 'block';
+        }
+        
+        // 创建或更新元素中心点标记
+        let centerMarker = document.getElementById('centerMarker');
+        if (!centerMarker) {
+            centerMarker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            centerMarker.id = 'centerMarker';
+            centerMarker.setAttribute('r', '3');
+            centerMarker.setAttribute('fill', 'green');
+            svg.appendChild(centerMarker);
+        }
+        
+        // 设置中心点位置
+        const rect = animatedElement.getBoundingClientRect();
+        const centerX = rect.left + rect.width/2;
+        const centerY = rect.top + rect.height/2;
+        centerMarker.setAttribute('cx', centerX);
+        centerMarker.setAttribute('cy', centerY);
+        centerMarker.style.display = 'block';
+        
+        // 创建或更新路径
+        let pathVis = document.getElementById('pathVisualization');
+        if (!pathVis) {
+            pathVis = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            pathVis.id = 'pathVisualization';
+            pathVis.setAttribute('fill', 'none');
+            pathVis.setAttribute('stroke', 'rgba(0, 255, 0, 0.5)');
+            pathVis.setAttribute('stroke-width', '2');
+            svg.appendChild(pathVis);
+        }
+        
+        // 绘制路径
+        let pathData = `M ${pathStartX} ${pathStartY}`;
         for (let i = 1; i < points.length; i++) {
-            const relX = points[i].x - originX;
-            const relY = points[i].y - originY;
-            pathData += ` L ${relX} ${relY}`;
-        }
-        return pathData;
-    }
-    
-    // 生成曲线路径
-    function generateCurvedPath(points, originX, originY) {
-        const step = Math.ceil(points.length / 10);
-        let pathData = '';
-        
-        // 生成贝塞尔曲线段
-        for (let i = step; i < points.length; i += step) {
-            const prev = points[i - step];
-            const curr = points[i];
-            
-            const ctrlX1 = prev.x + (curr.x - prev.x) / 3 - originX;
-            const ctrlY1 = prev.y + (curr.y - prev.y) / 3 - originY;
-            const ctrlX2 = prev.x + (curr.x - prev.x) * 2 / 3 - originX;
-            const ctrlY2 = prev.y + (curr.y - prev.y) * 2 / 3 - originY;
-            const endX = curr.x - originX;
-            const endY = curr.y - originY;
-            
-            // 第一段曲线使用M命令，后续使用C命令
-            if (i === step) {
-                pathData = `M 0 0 C ${ctrlX1} ${ctrlY1}, ${ctrlX2} ${ctrlY2}, ${endX} ${endY}`;
-            } else {
-                pathData += ` C ${ctrlX1} ${ctrlY1}, ${ctrlX2} ${ctrlY2}, ${endX} ${endY}`;
-            }
+            pathData += ` L ${points[i].x} ${points[i].y}`;
         }
         
-        // 处理到终点的最后一段
-        const lastIndex = Math.floor(points.length / step) * step;
-        if (lastIndex < points.length - 1) {
-            const prev = points[lastIndex];
-            const curr = points[points.length - 1];
-            
-            const ctrlX1 = prev.x + (curr.x - prev.x) / 3 - originX;
-            const ctrlY1 = prev.y + (curr.y - prev.y) / 3 - originY;
-            const ctrlX2 = prev.x + (curr.x - prev.x) * 2 / 3 - originX;
-            const ctrlY2 = prev.y + (curr.y - prev.y) * 2 / 3 - originY;
-            const endX = curr.x - originX;
-            const endY = curr.y - originY;
-            
-            // 如果还没有数据，使用M命令创建新路径
-            if (pathData === '') {
-                pathData = `M 0 0 C ${ctrlX1} ${ctrlY1}, ${ctrlX2} ${ctrlY2}, ${endX} ${endY}`;
-            } else {
-                pathData += ` C ${ctrlX1} ${ctrlY1}, ${ctrlX2} ${ctrlY2}, ${endX} ${endY}`;
-            }
-        }
-        
-        return pathData || `M 0 0 L ${points[points.length-1].x - originX} ${points[points.length-1].y - originY}`;
-    }
-    
-    // 应用关键帧动画
-    function applyKeyframeAnimation(styleElement, duration) {
-        const keyframes = window.motionKeyframes;
-        
-        // 生成高精度关键帧
-        let keyframesCSS = '@keyframes moveAlongPath {\n';
-        for (let i = 0; i < keyframes.length; i++) {
-            const percent = Math.round(keyframes[i].progress * 1000) / 10;
-            keyframesCSS += `  ${percent}% {\n    offset-distance: ${percent}%;\n  }\n`;
-        }
-        keyframesCSS += '}';
-        
-        styleElement.textContent = keyframesCSS;
-        document.head.appendChild(styleElement);
-        
-        // 使用RAF确保元素渲染关键帧
-        requestAnimationFrame(() => {
-            animatedElement.style.transition = ''; // 移除transition:none
-            animatedElement.style.animation = `moveAlongPath ${duration}s linear forwards`;
-        });
-    }
-    
-    // 应用贝塞尔曲线动画
-    function applyBezierAnimation(styleElement, duration, x1, y1, x2, y2) {
-        styleElement.textContent = `
-            @keyframes moveAlongPath {
-                0% { offset-distance: 0%; }
-                100% { offset-distance: 100%; }
-            }
-        `;
-        document.head.appendChild(styleElement);
-        
-        // 使用RAF确保元素渲染
-        requestAnimationFrame(() => {
-            animatedElement.style.transition = ''; // 移除transition:none
-            animatedElement.style.animation = `moveAlongPath ${duration}s cubic-bezier(${x1}, ${y1}, ${x2}, ${y2}) forwards`;
-        });
+        pathVis.setAttribute('d', pathData);
+        pathVis.style.display = 'block';
     }
     
     // 重置所有状态
@@ -860,6 +987,7 @@ ${keyframesCSS}
         
         // 重置动画元素
         animatedElement.style.transition = 'none';
+        animatedElement.style.transform = ''; // 重置变换
         animatedElement.style.offsetPath = '';
         animatedElement.style.offsetRotate = '';
         animatedElement.style.animation = '';
@@ -873,6 +1001,9 @@ ${keyframesCSS}
             // 路径模式下重置到初始位置
             initElement();
         }
+        
+        // 确保所有重置完成后强制重绘
+        void animatedElement.offsetWidth;
     }
     
     // 预览按钮
