@@ -7,38 +7,52 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div class="container">
-      <header>
-        <h1>CSS曲线动画生成器</h1>
-        <p>
-          在下方画布上按住鼠标左键绘制动画路径，工具将自动生成相应的CSS动画代码
-        </p>
-      </header>
+    <!-- 全屏画布 -->
+    <canvas id="drawingCanvas"></canvas>
+    <svg id="debugPath" width="100%" height="100%" style="position:fixed; top:0; left:0; pointer-events:none; z-index:10;">
+      <path id="testPathVis" d="M 0 0" fill="none" stroke="red" stroke-width="2"></path>
+    </svg>
+    <div id="animatedElement" class="animated-element">拖动我</div>
+    
+    <!-- 路径绘制指示器 -->
+    <div id="pathIndicator" class="path-indicator">正在绘制路径...</div>
+    
+    <!-- 浮层UI -->
+    <div class="ui-overlay">
 
-      <main>
-        <div class="drawing-area">
-        <canvas id="drawingCanvas"></canvas>
-        <div id="startPoint" class="point start-point">起点</div>
-        <div id="animatedElement" class="animated-element">元素</div>
+      <div class="controls overlay-panel">
+        <button id="resetBtn">重置</button>
+        <button id="previewBtn">预览动画</button>
+        <button id="viewCodeBtn">查看CSS</button>
+        <div class="mode-switch">
+          <span>定位模式</span>
+          <label class="switch">
+            <input type="checkbox" id="modeToggle">
+            <span class="slider round"></span>
+          </label>
+          <span>路径模式</span>
         </div>
+      </div>
 
-        <div class="controls">
-          <button id="resetBtn">重置路径</button>
-          <button id="previewBtn">预览动画</button>
-          <button id="copyBtn">复制CSS代码</button>
+      <!-- 移除多余的按钮容器 -->
+      
+      <!-- CSS代码弹窗 -->
+      <div id="codeModal" class="modal" style="display:none;">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>生成的CSS代码</h2>
+            <span id="closeModal" class="close-modal">&times;</span>
+          </div>
+          <div class="modal-body">
+            <pre id="cssOutput">/* 拖动元素后将生成CSS代码 */</pre>
+          </div>
+          <div class="modal-footer">
+            <button id="copyBtnInModal" class="copy-btn">复制代码</button>
+          </div>
         </div>
-
-        <div class="output-area">
-          <h2>生成的CSS代码</h2>
-          <pre id="cssOutput">/* 绘制路径后将生成CSS代码 */</pre>
-        </div>
-      </main>
-
-      <footer>
-        <p>动画路径可视化工具 - 让前端动画创作更简单</p>
-      </footer>
+      </div>
     </div>
 
-    <script src="script-new.js"></script>
+    <script src="script-dual-mode.js"></script>
   </body>
 </html>
