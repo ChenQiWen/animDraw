@@ -3,7 +3,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('drawingCanvas');
     const ctx = canvas.getContext('2d');
     const startPoint = document.getElementById('startPoint');
-    const endPoint = document.getElementById('endPoint');
     const animatedElement = document.getElementById('animatedElement');
     const resetBtn = document.getElementById('resetBtn');
     const previewBtn = document.getElementById('previewBtn');
@@ -27,13 +26,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // 贝塞尔曲线参数
     let bezierParams = null;
     
-    // 初始化起点和终点位置
+    // 初始化起点位置
     function initPoints() {
         const startRect = startPoint.getBoundingClientRect();
-        const endRect = endPoint.getBoundingClientRect();
         const canvasRect = canvas.getBoundingClientRect();
         
         // 调整动画元素到起点位置
+        animatedElement.style.position = 'absolute';
         animatedElement.style.top = `${startPoint.offsetTop}px`;
         animatedElement.style.left = `${startPoint.offsetLeft}px`;
     }
@@ -47,11 +46,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const x = e.clientX - canvasRect.left;
         const y = e.clientY - canvasRect.top;
         
+        // 强制从起点元素开始绘制
+        const startX = startPoint.offsetLeft + startPoint.offsetWidth / 2;
+        const startY = startPoint.offsetTop + startPoint.offsetHeight / 2;
+        
         points = [];
+        points.push({
+            x: startX,  // 使用起点元素位置作为第一个点
+            y: startY,
+            time: performance.now()
+        });
+        
+        // 添加点击位置作为第二个点，确保曲线从起点开始
         points.push({
             x: x,
             y: y,
-            time: performance.now()
+            time: performance.now() + 1
         });
         
         startTime = performance.now();
@@ -59,6 +69,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // 清除画布
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 绘制初始路径
+        drawPath();
         
         // 重置动画元素
         animatedElement.classList.remove('animate');
@@ -169,20 +182,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (points.length < 2) return '';
         
         // 生成相对路径，从原点开始
-        // 这样元素将从其当前位置开始移动，而不是从SVG路径的起点
-        
-        // 计算绘制轨迹的中心点，缩放和偏移
+        // 记录起点元素的位置
         const firstX = points[0].x;
         const firstY = points[0].y;
         
         // 路径从原点(0,0)开始
         let pathData = `M 0 0`;
         
-        // 生成相对于起始点的路径
+        // 生成相对于起点元素的路径
         for (let i = 1; i < points.length; i++) {
+            // 计算相对位置
             const relativeX = points[i].x - firstX;
             const relativeY = points[i].y - firstY;
-            pathData += ` L ${relativeX} ${relativeY}`;
+            
+            if (i === 1 && points.length <= 3) {
+                // 如果只有两个点，添加中间控制点使路径看起来更平滑
+                pathData += ` C ${relativeX/3} ${relativeY/3}, ${relativeX*2/3} ${relativeY*2/3}, ${relativeX} ${relativeY}`;
+            } else {
+                pathData += ` L ${relativeX} ${relativeY}`;
+            }
         }
         
         return pathData;
@@ -198,11 +216,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // 获取贝塞尔曲线参数用于timing-function
         const { x1, y1, x2, y2 } = bezierParams || { x1: 0.42, y1: 0, x2: 0.58, y2: 1 };
         
-        // 获取起点和终点的位置（用于兼容性回退）
+        // 获取起点位置
         const startTop = startPoint.offsetTop;
         const startLeft = startPoint.offsetLeft;
-        const endTop = endPoint.offsetTop;
-        const endLeft = endPoint.offsetLeft;
+        
+        // 计算轨迹绘制中最后一个点相对于起点的位置（用于兼容性回退）
+        const lastPoint = points[points.length - 1];
+        const firstPoint = points[0];
+        const endTop = startTop + (lastPoint.y - firstPoint.y);
+        const endLeft = startLeft + (lastPoint.x - firstPoint.x);
         
         // 计算动画时长（基于轨迹绘制时长）
         const duration = (points[points.length - 1].time - points[0].time) / 1000;
@@ -268,12 +290,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const duration = (points[points.length - 1].time - points[0].time) / 1000;
         const roundedDuration = Math.max(0.5, Math.min(5, Math.round(duration * 10) / 10));
         
-        // 获取SVG路径
-        const pathData = generateSVGPath();
-        
-        // 计算起点和终点之间的相对位置
-        const diffX = endPoint.offsetLeft - startPoint.offsetLeft;
-        const diffY = endPoint.offsetTop - startPoint.offsetTop;
+        // 计算最后一个点相对于起点的位置
+        const lastPoint = points[points.length - 1];
+        const firstPoint = points[0];
+        const diffX = lastPoint.x - firstPoint.x;
+        const diffY = lastPoint.y - firstPoint.y;
         
         // 创建临时样式表
         const styleSheet = document.createElement('style');
@@ -293,14 +314,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // 检查浏览器是否支持offset-path
         const supportsOffsetPath = CSS.supports && CSS.supports('offset-path', 'path("M0,0")');
         
-        // 先将元素放到起点
+        // 确保元素在起点位置
+        animatedElement.style.position = 'absolute';
         animatedElement.style.top = `${startPoint.offsetTop}px`;
         animatedElement.style.left = `${startPoint.offsetLeft}px`;
         
+        // 获取SVG路径
+        const pathData = generateSVGPath();
+        
         if (supportsOffsetPath) {
-            // 添加一条从原点到终点的直线作为参考
-            const endLinePath = `M 0 0 L ${diffX} ${diffY}`;
-            
             // 应用动画样式 - 沿着路径移动
             animatedElement.style.offsetPath = `path('${pathData}')`;
             animatedElement.style.offsetRotate = '0deg';
@@ -308,29 +330,23 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // 添加调试信息
             console.log('起点:', startPoint.offsetLeft, startPoint.offsetTop);
-            console.log('终点:', endPoint.offsetLeft, endPoint.offsetTop);
             console.log('路径:', pathData);
         } else {
-            // 回退到简单动画
+            // 回退到简单动画 - 移动到最后绘制的点
             animatedElement.style.transition = `all ${roundedDuration}s cubic-bezier(${x1}, ${y1}, ${x2}, ${y2})`;
-            animatedElement.style.top = `${endPoint.offsetTop}px`;
-            animatedElement.style.left = `${endPoint.offsetLeft}px`;
+            animatedElement.style.top = `${startPoint.offsetTop + diffY}px`;
+            animatedElement.style.left = `${startPoint.offsetLeft + diffX}px`;
         }
         
-        // 重置动画
+        // 移除临时样式表的定时器（但不重置元素位置）
         setTimeout(() => {
             // 移除临时样式表
             if (document.getElementById('tempAnimationStyle')) {
                 document.getElementById('tempAnimationStyle').remove();
             }
             
-            // 重置元素位置和样式
-            animatedElement.style.offsetPath = '';
-            animatedElement.style.offsetRotate = '';
-            animatedElement.style.animation = '';
-            animatedElement.style.transition = 'none';
-            animatedElement.style.top = `${startPoint.offsetTop}px`;
-            animatedElement.style.left = `${startPoint.offsetLeft}px`;
+            // 保留元素在最后位置，只移除动画属性
+            animatedElement.style.animation = 'none';
         }, roundedDuration * 1000 + 100);
     });
     
@@ -369,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     });
     
-    // 使起点和终点可拖动
+    // 使起点可拖动
     function makeDraggable(element) {
         let isDragging = false;
         let offsetX, offsetY;
@@ -397,7 +413,7 @@ document.addEventListener('DOMContentLoaded', () => {
             element.style.left = `${newLeft}px`;
             element.style.top = `${newTop}px`;
             
-            // 如果移动了起点或终点，重新生成CSS
+            // 如果移动了起点，重新生成CSS
             if (bezierParams) {
                 generateCSS();
             }
@@ -409,5 +425,4 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     makeDraggable(startPoint);
-    makeDraggable(endPoint);
 });
