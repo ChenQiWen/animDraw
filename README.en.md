@@ -1,4 +1,4 @@
-# 🎨 CSS Curve Animation Generator
+# 🎨 AnimDraw
 
 **As simple as drawing, make elements move elegantly on your page**
 
