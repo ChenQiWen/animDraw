@@ -4,6 +4,8 @@
 
 > 💫 Draw paths with your mouse, generate smooth CSS animation code with one click, and bring your UI to life!
 
+📱 **[Live Demo](https://chenqiwen.github.io/animDraw/)**
+
 *[简体中文](./README.md) | English*
 
 ## ✨ Features

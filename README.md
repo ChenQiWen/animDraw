@@ -4,6 +4,8 @@
 
 > 💫 通过鼠标绘制路径，一键生成流畅的CSS动画代码，让你的UI动起来！
 
+📱 **[在线体验](https://chenqiwen.github.io/animDraw/)**
+
 *简体中文 | [English](./README.en.md)*
 
 ## ✨ 功能特色
