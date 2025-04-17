@@ -1,5 +1,7 @@
 # 🎨 CSS Curve Animation Generator
 
+**As simple as drawing, make elements move elegantly on your page**
+
 > 💫 Draw paths with your mouse, generate smooth CSS animation code with one click, and bring your UI to life!
 
 *[简体中文](./README.md) | English*
