@@ -65,17 +65,23 @@ export function setupEventListeners(
     getIsPathMode,
     getCssOutputText
 ) {
-    modeToggle.addEventListener('change', () => {
-        const isPathMode = modeToggle.checked;
-        if (isPathMode) {
-            if(modeDescription) modeDescription.textContent = '当前模式：路径模式 - 拖动鼠标绘制元素移动路径，松开后点击预览可查看动画效果';
-            document.body.classList.add('path-mode');
-        } else {
-            if(modeDescription) modeDescription.textContent = '当前模式：元素定位模式 - 拖动元素调整其在页面上的固定位置';
-            document.body.classList.remove('path-mode');
-        }
-        handleModeToggle(isPathMode);
-    });
+    if (modeToggle) {
+        modeToggle.addEventListener('change', () => {
+            const isPathMode = modeToggle.checked;
+            // The existing logic for 'change' event remains the same here
+            if (isPathMode) {
+                if(modeDescription) modeDescription.textContent = '当前模式：路径模式 - 拖动鼠标绘制元素移动路径，松开后点击预览可查看动画效果';
+                document.body.classList.add('path-mode');
+            } else {
+                if(modeDescription) modeDescription.textContent = '当前模式：元素定位模式 - 拖动元素调整其在页面上的固定位置';
+                document.body.classList.remove('path-mode');
+            }
+            handleModeToggle(isPathMode); // Callback from main.js
+        });
+    } else {
+        // Log an error if modeToggle is not found, so it's clear in the console why the toggle won't work.
+        console.error("UIController: modeToggle element not found. 'change' event listener not attached.");
+    }
 
     if(resetBtn) resetBtn.addEventListener('click', handleResetAll);
     if(previewBtn) previewBtn.addEventListener('click', handlePreviewAnimation);
