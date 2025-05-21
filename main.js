@@ -1,0 +1,368 @@
+/**
+ * @file main.js
+ * @description This is the main entry point for the AnimDraw application.
+ * It initializes all modules, manages global state, and orchestrates interactions
+ * between different parts of the application such as UI, canvas drawing,
+ * animation logic, CSS generation, and animation playback.
+ */
+
+import { initializeUIElements, setupEventListeners as setupUIEventListeners, updateCssOutput, updatePathIndicator, setInitialModeDescription, updateAnimatedElementTitle } from './uiController.js';
+import { initializeCanvas, setupCanvasEventListeners, drawPath as drawCanvasPath, clearCanvas, addCanvasPoint, resetCanvasPoints, getCanvasPoints as getCanvasDrawingPoints } from './canvasController.js';
+import { addPoint as addAnimationPoint, resetPoints as resetAnimationPoints, calculateAnimationData, getPoints as getAnimationPoints } from './animationLogic.js';
+import { generateDynamicCSS, getCurrentCssOutput, generatePositionCSS as generateInitialPositionCSS } from './cssGenerator.js';
+import { initializeAnimationPlayer, playAnimation as playPreviewAnimation, resetElementStyles, updateDebugMode as updatePlayerDebugMode, hideDebugMarkers } from './animationPlayer.js';
+
+/**
+ * @typedef {import('./animationLogic.js').Point} Point
+ * @typedef {import('./cssGenerator.js').ElementPosition} ElementPosition
+ */
+
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Global State Variables ---
+    /** 
+     * Flag indicating if the user is currently dragging the element or drawing a path.
+     * @type {boolean} 
+     */
+    let isDragging = false;
+
+    /** 
+     * Current operational mode: false for element positioning, true for path drawing.
+     * @type {boolean} 
+     */
+    let isPathMode = false;
+
+    /** 
+     * Stores the CSS `top` and `left` position of the animated element.
+     * Used for static positioning and as the starting reference for path animations.
+     * @type {ElementPosition} 
+     */
+    let currentElementPosition = { top: '0px', left: '0px' };
+
+    /** 
+     * Timestamp when a path drawing or element dragging action started.
+     * @type {number} 
+     */
+    let startTime = 0;
+
+    /** 
+     * Stores initial properties during element dragging (positioning mode).
+     * @property {number} x - Initial left position of the element.
+     * @property {number} y - Initial top position of the element.
+     * @property {number} offsetX - Mouse X offset relative to element's top-left.
+     * @property {number} offsetY - Mouse Y offset relative to element's top-left.
+     * @type {{x: number, y: number, offsetX: number, offsetY: number}} 
+     */
+    let startPosition = { x: 0, y: 0, offsetX: 0, offsetY: 0 };
+
+    /** 
+     * Flag for debug mode, toggles visual aids for path drawing.
+     * @type {boolean} 
+     */
+    let debugMode = false;
+
+    // --- DOM Elements ---
+    /** 
+     * The main element that will be animated or positioned.
+     * @type {HTMLElement | null} 
+     */
+    const animatedElement = document.getElementById('animatedElement');
+    if (!animatedElement) {
+        console.error("Fatal: Animated element #animatedElement not found.");
+        return; // Stop execution if critical element is missing
+    }
+    
+    // Canvas and its context are initialized and returned by canvasController
+    
+    // --- Initialization ---
+    initializeUIElements();
+    const { canvas, ctx } = initializeCanvas(); // Initialize canvas, get canvas and context
+    initializeAnimationPlayer(animatedElement, debugMode);
+
+    // Initial setup of the animated element and UI
+    currentElementPosition = initElement(); 
+    updateAnimatedElementTitle(isPathMode, animatedElement);
+    setInitialModeDescription(isPathMode);
+    updateCssOutput(generateInitialPositionCSS(currentElementPosition));
+
+
+    // --- Callback Functions for UI Interactions (passed to uiController) ---
+    /**
+     * Handles the mode toggle (path vs. positioning).
+     * Updates UI and resets state.
+     * @param {boolean} newIsPathMode - The new mode state from the toggle switch.
+     */
+    function handleModeToggle(newIsPathMode) {
+        isPathMode = newIsPathMode;
+        updateAnimatedElementTitle(isPathMode, animatedElement);
+        resetAll(); 
+    }
+
+    /** Handles the reset button click, resetting the application state. */
+    function handleResetAll() {
+        resetAll();
+    }
+
+    /** Handles the preview animation button click. */
+    function handlePreviewAnimation() {
+        playPreviewAnimation(isPathMode, currentElementPosition);
+    }
+    
+    /** 
+     * Provides the current path mode state to the UI controller.
+     * @returns {boolean} The current `isPathMode` state.
+     */
+    function getIsPathModeForUI() {
+        return isPathMode;
+    }
+
+    /**
+     * Provides the current CSS output text to the UI controller (for the modal).
+     * @returns {string} The CSS code generated by `cssGenerator.js`.
+     */
+    function getCssOutputTextForUI() {
+        return getCurrentCssOutput();
+    }
+
+    // Setup event listeners in the UI module by passing the handlers
+    setupUIEventListeners(
+        handleModeToggle, 
+        handleResetAll, 
+        handlePreviewAnimation,
+        getIsPathModeForUI,
+        getCssOutputTextForUI
+    );
+    
+    // Setup canvas-specific event listeners by passing its mousedown handler
+    setupCanvasEventListeners(handleCanvasMouseDown);
+
+
+    // --- Core Application Logic Functions ---
+
+    /**
+     * Initializes or resets the animated element to the center of the screen.
+     * Sets its initial style properties.
+     * @returns {ElementPosition} An object containing the calculated `top` and `left` CSS position strings.
+     */
+    function initElement() {
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        // Use offsetWidth/Height, fallback to a default if element is not yet rendered
+        const elementWidth = animatedElement.offsetWidth || 50; 
+        const elementHeight = animatedElement.offsetHeight || 50;
+
+        const centerX = Math.max(0, (windowWidth - elementWidth) / 2);
+        const centerY = Math.max(0, (windowHeight - elementHeight) / 2);
+
+        animatedElement.style.position = 'fixed';
+        animatedElement.style.top = `${centerY.toFixed(2)}px`;
+        animatedElement.style.left = `${centerX.toFixed(2)}px`;
+        animatedElement.style.cursor = 'grab';
+        
+        const position = { top: `${centerY.toFixed(2)}px`, left: `${centerX.toFixed(2)}px` };
+        return position;
+    }
+    
+    /**
+     * Global function exposed for `animationPlayer.js` to update `currentElementPosition`
+     * after an animation finishes. This ensures the application state reflects the visual state.
+     * @param {ElementPosition} newPosition - The new top/left position of the element.
+     */
+    window.updateCurrentElementPosition = (newPosition) => {
+        currentElementPosition.top = newPosition.top;
+        currentElementPosition.left = newPosition.left;
+        // Note: Regenerating CSS here might be redundant if the animation's end state
+        // is purely visual and doesn't require immediate CSS re-generation for other purposes.
+        // updateCssOutput(generateDynamicCSS(isPathMode, currentElementPosition));
+    };
+
+    /**
+     * Handles window resize events. Re-initializes the element's position
+     * if not currently dragging, and updates CSS if in positioning mode.
+     * Canvas resizing is handled internally by `canvasController.js`.
+     */
+    window.addEventListener('resize', () => {
+        if (!isDragging) { 
+            currentElementPosition = initElement();
+            if (!isPathMode) { 
+                updateCssOutput(generateDynamicCSS(false, currentElementPosition));
+            }
+        }
+    });
+
+    // --- Global Mouse and Keyboard Event Listeners ---
+
+    /**
+     * Handles `mousedown` event on the `animatedElement`.
+     * Initiates either element dragging (positioning mode) or path drawing (path mode).
+     * @param {MouseEvent} e - The mousedown event object.
+     */
+    animatedElement.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        isDragging = true;
+
+        if (isPathMode) {
+            // Path Mode: Start drawing a new path.
+            // The path starts from the mouse click position, not necessarily the element's center.
+            const clickX = e.clientX; 
+            const clickY = e.clientY;
+
+            resetAnimationPoints(); // Clear points in animationLogic
+            resetCanvasPoints();  // Clear visual points in canvasController
+
+            const firstPoint = { time: performance.now(), x: clickX, y: clickY };
+            addAnimationPoint(firstPoint); // Add to animation data
+            addCanvasPoint(firstPoint);    // Add to canvas drawing data
+
+            startTime = performance.now();
+            updatePathIndicator(true); // Show "drawing path..."
+            clearCanvas();             // Clear previous drawings on canvas
+            hideDebugMarkers();        // Hide any existing SVG debug visuals
+        } else {
+            // Positioning Mode: Prepare to drag the element.
+            const rect = animatedElement.getBoundingClientRect();
+            // Calculate mouse offset from the element's top-left corner for smooth dragging.
+            startPosition = {
+                x: rect.left, // Element's current screen position
+                y: rect.top,
+                offsetX: e.clientX - rect.left,
+                offsetY: e.clientY - rect.top
+            };
+            animatedElement.style.cursor = 'grabbing';
+        }
+    });
+
+    /**
+     * Handles `mousedown` event directly on the canvas (delegated from `canvasController`).
+     * Used in Path Mode to start drawing a path if the click is on the canvas, not the element.
+     * @param {MouseEvent} e - The mousedown event object from the canvas.
+     */
+    function handleCanvasMouseDown(e) {
+        if (!isPathMode || isDragging) return; // Only if in path mode and not already dragging the element itself
+        
+        isDragging = true; // Signifies that path drawing has started
+        resetAnimationPoints();
+        resetCanvasPoints();
+
+        const point = { time: performance.now(), x: e.clientX, y: e.clientY };
+        addAnimationPoint(point);
+        addCanvasPoint(point);
+        
+        startTime = performance.now();
+        updatePathIndicator(true);
+        clearCanvas();
+        hideDebugMarkers();
+    }
+    
+    /**
+     * Handles `mousemove` events on the document.
+     * Records path points (path mode) or moves the element (positioning mode).
+     * @param {MouseEvent} e - The mousemove event object.
+     */
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+
+        if (isPathMode) {
+            const point = { time: performance.now(), x: e.clientX, y: e.clientY };
+            addAnimationPoint(point); // For animation calculation
+            addCanvasPoint(point);    // For visual drawing on canvas
+            drawCanvasPath(getCanvasDrawingPoints()); // Update visual path on canvas
+        } else {
+            // Positioning Mode: Move the element based on mouse position and initial offset.
+            const newX = e.clientX - startPosition.offsetX;
+            const newY = e.clientY - startPosition.offsetY;
+            animatedElement.style.left = `${newX.toFixed(2)}px`;
+            animatedElement.style.top = `${newY.toFixed(2)}px`;
+            // `currentElementPosition` is updated on mouseup for positioning mode.
+        }
+    });
+
+    /**
+     * Handles `mouseup` events on the document.
+     * Finalizes path drawing or element positioning.
+     */
+    document.addEventListener('mouseup', () => {
+        if (!isDragging) return;
+        isDragging = false;
+
+        if (isPathMode) {
+            updatePathIndicator(false); // Hide "drawing path..."
+            const collectedAnimationPoints = getAnimationPoints();
+            if (collectedAnimationPoints.length >= 3) {
+                calculateAnimationData(); // Process points in animationLogic to get keyframes/Bezier
+                
+                // For path mode CSS (`offset-path`), the element's `top`/`left` should be where its
+                // *center* aligns with the *first point of the drawn path*.
+                const firstDrawnPoint = collectedAnimationPoints[0];
+                const elementWidth = animatedElement.offsetWidth || 50;
+                const elementHeight = animatedElement.offsetHeight || 50;
+
+                currentElementPosition = {
+                    top: `${(firstDrawnPoint.y - elementHeight / 2).toFixed(2)}px`,
+                    left: `${(firstDrawnPoint.x - elementWidth / 2).toFixed(2)}px`
+                };
+                updateCssOutput(generateDynamicCSS(true, currentElementPosition));
+            } else {
+                console.warn('路径点太少 (少于3个)，无法生成CSS。');
+                updateCssOutput('/* 路径点太少，无法生成CSS */');
+            }
+        } else {
+            // Positioning Mode: Finalize element's new position.
+            animatedElement.style.cursor = 'grab';
+            currentElementPosition = { // Update state with the final dragged position
+                top: animatedElement.style.top,
+                left: animatedElement.style.left
+            };
+            updateCssOutput(generateDynamicCSS(false, currentElementPosition));
+        }
+    });
+
+    /**
+     * Handles `keydown` events on the document.
+     * Used for toggling debug mode (Shift+D).
+     * ESC key for modals is handled within `uiController.js`.
+     * @param {KeyboardEvent} e - The keydown event object.
+     */
+    document.addEventListener('keydown', (e) => {
+        if (e.shiftKey && e.key === 'D') { // Shift+D to toggle debug mode
+            e.preventDefault(); // Prevent browser's default "Add to Bookmarks"
+            debugMode = !debugMode;
+            updatePlayerDebugMode(debugMode); // Inform animationPlayer of the change
+            console.log('调试模式：', debugMode ? '已启用' : '已禁用');
+            if (!debugMode) {
+                hideDebugMarkers(); // Hide debug visuals if turning off
+            }
+            // If turning on, debug markers are typically shown during/after playAnimation or path calculation.
+        }
+    });
+
+    /**
+     * Resets the application to its initial state.
+     * Clears drawn paths, resets element position, stops animations, and updates UI.
+     */
+    function resetAll() {
+        isDragging = false;
+        resetAnimationPoints(); 
+        resetCanvasPoints();  
+        clearCanvas();        
+        
+        resetElementStyles(); // Reset animated element styles via animationPlayer
+        
+        // Re-initialize element to center and update its position state
+        currentElementPosition = initElement(); 
+
+        updatePathIndicator(false);
+        hideDebugMarkers(); // Hide any SVG debug visuals
+
+        // Update CSS output based on the current mode after reset
+        if (isPathMode) {
+            updateCssOutput('/* 绘制路径后将生成CSS代码 */');
+        } else {
+            updateCssOutput(generateDynamicCSS(false, currentElementPosition));
+        }
+        
+        updateAnimatedElementTitle(isPathMode, animatedElement); // Update tooltip
+    }
+
+    console.log("AnimDraw main application initialized successfully.");
+});
+console.log("main.js loaded and DOMContentLoaded listener set up.");
